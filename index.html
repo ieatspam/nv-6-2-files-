@@ -62,14 +62,8 @@
       .domain([d3.min(items, d => d.pct) * 1.1, Math.max(0, d3.max(items, d => d.pct) * 1.1)])
       .range([innerHeight, 0]);
 
-    chartGroup.append("g").call(d3.axisLeft(y).tickFormat(d => d + "%"));
-    chartGroup.append("g")
-      .attr("transform", `translate(0,${y(0)})`)
-      .call(d3.axisBottom(x))
-      .selectAll("text")
-      .attr("transform", "rotate(-40)")
-      .style("text-anchor", "end");
-
+    // draw bars FIRST, axes AFTER -- otherwise a bar that starts right at the
+    // 0% line paints over its own axis label underneath it
     const bars = chartGroup.selectAll(".bar")
       .data(items)
       .enter().append("rect")
@@ -96,15 +90,31 @@
       .attr("y", d => d.pct < 0 ? y(0) : y(d.pct))
       .attr("height", d => Math.abs(y(d.pct) - y(0)));
 
-    // annotation: call out the most extreme bar
+    chartGroup.append("g").call(d3.axisLeft(y).tickFormat(d => d + "%"));
+    chartGroup.append("g")
+      .attr("transform", `translate(0,${y(0)})`)
+      .call(d3.axisBottom(x))
+      .selectAll("text")
+      .attr("transform", "rotate(-40)")
+      .style("text-anchor", "end");
+
+    // annotation: call out the most extreme bar. Position adapts so the
+    // label always lands in open space near the top of the chart, with a
+    // leader line down (or up) to the bar's actual tip -- rather than a
+    // fixed offset that only looked right for one sign of bar.
     const extreme = items.reduce((a, b) => Math.abs(a.pct) > Math.abs(b.pct) ? a : b);
+    const tipX = x(extreme.name) + x.bandwidth() / 2;
+    const tipY = y(extreme.pct);          // the bar's actual tip, whichever direction it points
+    const labelY = margin.top + 10;        // always land the label near the top, in open space
+    const onLeftHalf = tipX < innerWidth / 2;
     try {
       chartGroup.append("g").call(
-        d3.annotation().annotations([{
+        d3.annotation().type(d3.annotationCalloutElbow).annotations([{
           note: { label: `${extreme.pct}% change`, title: extreme.name, wrap: 130 },
-          x: x(extreme.name) + x.bandwidth() / 2,
-          y: extreme.pct < 0 ? y(extreme.pct) : y(extreme.pct),
-          dx: 50, dy: -40
+          x: tipX,
+          y: tipY,
+          dx: onLeftHalf ? 70 : -70,
+          dy: labelY - tipY
         }])
       );
     } catch (err) {
